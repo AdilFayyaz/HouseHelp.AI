@@ -80,12 +80,112 @@ class Phi4Service:
             return None
     
     def generate_repair_plan(self, image_path: str, description: str) -> dict:
-        """Generate repair plan using fallback system"""
+        """Generate repair plan using Phi-4 Mini via Ollama"""
         print(f"Generating repair plan for: {description}")
         
-        # For now, use fallback to ensure stability
-        # TODO: Re-enable Ollama when hanging issue is resolved
-        return self._fallback_repair_plan(description)
+        if not self.check_model_availability():
+            raise Exception("Phi-4 Mini model is not available. Please ensure Ollama is running and phi4-mini is installed.")
+        
+        try:
+            # Create a detailed prompt for Phi-4
+            prompt = f"""
+You are an expert home repair assistant. Create a detailed repair plan for this issue.
+
+Issue: "{description}"
+
+You must respond with ONLY valid JSON in exactly this format:
+
+{{
+    "diagnosis": "Explain what's wrong and why",
+    "steps": [
+        {{
+            "step": 1,
+            "instruction": "First action to take",
+            "tools_needed": ["tool1", "tool2"],
+            "estimated_time": "X minutes"
+        }},
+        {{
+            "step": 2,
+            "instruction": "Second action to take", 
+            "tools_needed": ["tool3"],
+            "estimated_time": "X minutes"
+        }}
+    ],
+    "is_diy": true,
+    "estimated_time": "Total time",
+    "estimated_cost": "$X-Y",
+    "safety_warnings": ["Warning 1", "Warning 2"],
+    "recommended_provider": "professional type if not DIY"
+}}
+
+Important: Respond with ONLY the JSON object, no other text or formatting.
+"""
+
+            print("Sending request to Phi-4...")
+            response = self.client.generate(
+                model=self.model_name,
+                prompt=prompt,
+                stream=False,
+                options={
+                    "temperature": 0.3,  # Lower temperature for more focused responses
+                    "num_predict": 800,  # More tokens for detailed repair plans
+                    "top_p": 0.9,
+                    "stop": ["\n\n", "```"]
+                }
+            )
+            
+            response_text = response['response'].strip()
+            print(f"Phi-4 response received: {response_text[:200]}...")
+            
+            # Extract JSON from response
+            try:
+                # Clean the response
+                response_text = response_text.strip()
+                
+                # Remove markdown code blocks if present
+                if "```json" in response_text:
+                    start = response_text.find("```json") + 7
+                    end = response_text.find("```", start)
+                    if end != -1:
+                        response_text = response_text[start:end].strip()
+                elif "```" in response_text:
+                    start = response_text.find("```") + 3
+                    end = response_text.find("```", start)
+                    if end != -1:
+                        response_text = response_text[start:end].strip()
+                
+                # Find the JSON part
+                start_idx = response_text.find('{')
+                end_idx = response_text.rfind('}') + 1
+                
+                if start_idx == -1 or end_idx == 0:
+                    print(f"No JSON brackets found. Raw response: {response_text}")
+                    raise ValueError("No JSON found in response")
+                
+                json_str = response_text[start_idx:end_idx]
+                print(f"Extracted JSON: {json_str[:200]}...")
+                
+                repair_plan = json.loads(json_str)
+                
+                # Validate required fields
+                required_fields = ['diagnosis', 'steps', 'is_diy']
+                missing_fields = [field for field in required_fields if field not in repair_plan]
+                
+                if missing_fields:
+                    print(f"Missing fields: {missing_fields}. Plan: {repair_plan}")
+                    raise ValueError(f"Missing required fields: {missing_fields}")
+                
+                print("✅ Successfully generated repair plan with Phi-4")
+                return repair_plan
+                
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"❌ Failed to parse Phi-4 JSON response: {e}")
+                print(f"Full raw response: {response_text}")
+                raise Exception(f"Phi-4 returned invalid JSON: {e}")
+                
+        except Exception as e:
+            print(f"❌ Phi-4 generation failed: {e}")
+            raise Exception(f"Failed to generate repair plan with Phi-4: {e}")
     
     def _fallback_repair_plan(self, description: str) -> dict:
         """Fallback repair plan when model is not available"""
@@ -177,55 +277,47 @@ class Phi4Service:
             }
     
     def chat_response(self, message: str, context: str = "") -> str:
-        """Generate chat response with fallback handling"""
+        """Generate chat response using Phi-4 Mini"""
         
-        # First try quick fallback responses for common questions
-        message_lower = message.lower()
-        if "skip" in message_lower and "step" in message_lower:
-            return "For safety reasons, I recommend following all repair steps in order. However, if you're experienced, you might be able to combine some steps. Always prioritize safety and don't skip critical safety checks."
-        elif "tools" in message_lower:
-            return "Make sure you have all the required tools before starting. If you're missing tools, you can often substitute with similar items or borrow/buy them. Check the tool list in your repair plan."
-        elif "safe" in message_lower:
-            return "Safety is paramount in any repair. Always turn off power/water, wear protective equipment, and don't attempt repairs beyond your skill level. If in doubt, consult a professional."
-        elif "cost" in message_lower:
-            return "Repair costs vary by location and complexity. DIY repairs typically save 50-70% compared to professional services, but factor in tool costs and your time."
-        elif "wrong" in message_lower:
-            return "If something goes wrong during the repair, stop immediately, ensure safety (turn off power/water), and assess the situation. Don't force anything. Consider consulting a professional if the issue is beyond your expertise."
-        
-        # Try Ollama only for complex questions, with timeout
         if not self.check_model_availability():
-            return "I'm currently unable to access the AI model, but I can still help! Please ask specific questions about tools, safety, costs, or common repair steps."
+            raise Exception("Phi-4 Mini model is not available. Please ensure Ollama is running.")
         
         try:
             prompt = f"""
-            You are a helpful home repair assistant. Answer briefly and clearly.
+You are HouseHelp.AI, an expert home repair assistant. Answer the user's question based on the repair context provided.
+
+Repair Context: {context if context else "No specific repair context provided."}
+
+User Question: {message}
+
+Provide a helpful, specific answer about the repair process. Include:
+- Specific guidance related to their question
+- Safety considerations if relevant  
+- Tool recommendations if applicable
+- Step-by-step advice when appropriate
+
+Keep your response informative but concise (2-4 sentences).
+"""
             
-            Context: {context}
-            User question: {message}
-            
-            Provide a helpful, concise answer (2-3 sentences max). Prioritize safety.
-            """
-            
+            print(f"Phi-4 chat request: {message}")
             response = self.client.generate(
                 model=self.model_name,
                 prompt=prompt,
                 stream=False,
                 options={
                     "temperature": 0.7,
-                    "num_predict": 100,  # Very short response
-                    "timeout": 8,  # Short timeout
+                    "num_predict": 200,  # Concise responses
+                    "top_p": 0.9,
                 }
             )
             
-            return response['response'].strip()
+            response_text = response['response'].strip()
+            print(f"Phi-4 chat response: {response_text}")
+            return response_text
             
         except Exception as e:
-            print(f"Error generating chat response: {e}")
-            # Return a helpful fallback based on context
-            if context and "repair" in context.lower():
-                return "Based on your repair plan, I recommend following the steps carefully and prioritizing safety. Feel free to ask specific questions about tools, materials, or safety concerns."
-            else:
-                return "I'm here to help with your repair questions! Ask me about specific steps, tools needed, safety concerns, or costs."
+            print(f"❌ Phi-4 chat failed: {e}")
+            raise Exception(f"Failed to generate chat response with Phi-4: {e}")
 
 # Global instance
 phi4_service = Phi4Service()

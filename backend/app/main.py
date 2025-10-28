@@ -157,6 +157,22 @@ async def update_issue(issue_id: int, issue_update: IssueUpdate, db: Session = D
     db.refresh(issue)
     return issue
 
+@app.delete("/api/issues/{issue_id}")
+async def delete_issue(issue_id: int, db: Session = Depends(get_db)):
+    """Delete an issue and its related audit logs"""
+    issue = db.query(Issue).filter(Issue.id == issue_id).first()
+    if not issue:
+        raise HTTPException(status_code=404, detail="Issue not found")
+    
+    # Delete related audit logs first (cascade delete)
+    db.query(AuditLog).filter(AuditLog.issue_id == issue_id).delete()
+    
+    # Delete the issue
+    db.delete(issue)
+    db.commit()
+    
+    return {"message": f"Issue {issue_id} deleted successfully"}
+
 # Maintenance Provider endpoints
 @app.get("/api/providers/", response_model=List[MaintenanceProviderResponse])
 async def get_providers(specialty: Optional[str] = None, db: Session = Depends(get_db)):
@@ -248,12 +264,12 @@ async def chat(message: ChatMessage, db: Session = Depends(get_db)):
         # Add timeout wrapper to prevent hanging
         response = await asyncio.wait_for(
             asyncio.to_thread(phi4_service.chat_response, message.message, context),
-            timeout=15.0  # 15 second timeout
+            timeout=60.0  # 60 second timeout for AI processing
         )
         return ChatResponse(response=response, context=context if context else None)
     except asyncio.TimeoutError:
         return ChatResponse(
-            response="I'm taking longer than usual to respond. Please try asking a simpler question or try again.",
+            response="The AI is taking longer than expected to respond. This might be due to a complex query. Please try again or ask a simpler question.",
             context=context if context else None
         )
     except Exception as e:
@@ -272,9 +288,27 @@ async def get_dashboard(db: Session = Depends(get_db)):
     diy_issues = db.query(Issue).filter(Issue.is_diy == True).count()
     professional_issues = db.query(Issue).filter(Issue.is_diy == False).count()
     
-    # Calculate costs
-    total_cost = db.query(AuditLog.cost).filter(AuditLog.cost.isnot(None)).all()
-    total_cost = sum([cost[0] for cost in total_cost]) if total_cost else 0
+    # Calculate costs from audit logs
+    try:
+        audit_costs = db.query(AuditLog.cost).filter(AuditLog.cost.isnot(None)).all()
+        total_cost = sum([cost[0] for cost in audit_costs]) if audit_costs else 0.0
+        
+        # If no audit logs exist, provide estimated costs based on issue types
+        if total_cost == 0.0 and completed_issues > 0:
+            # Estimate costs for completed issues (fallback calculation)
+            completed_issue_list = db.query(Issue).filter(Issue.status == "completed").all()
+            estimated_cost = 0.0
+            for issue in completed_issue_list:
+                # Simple estimation based on issue type
+                if issue.is_diy:
+                    estimated_cost += 25.0  # Average DIY material cost
+                else:
+                    estimated_cost += 150.0  # Average professional service cost
+            total_cost = estimated_cost
+            
+    except Exception as e:
+        print(f"Error calculating costs: {e}")
+        total_cost = 0.0
     
     return {
         "total_issues": total_issues,

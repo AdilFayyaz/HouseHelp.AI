@@ -21,6 +21,7 @@ import {
   Refresh,
   CheckCircle,
   Settings,
+  Delete,
 } from '@mui/icons-material';
 
 import { issuesAPI } from '../services/api';
@@ -79,6 +80,18 @@ const IssueDetails = () => {
       console.error('Analysis error:', error);
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleDeleteIssue = async () => {
+    if (window.confirm('Are you sure you want to delete this issue? This action cannot be undone.')) {
+      try {
+        await issuesAPI.deleteIssue(id);
+        navigate('/'); // Redirect to dashboard after deletion
+      } catch (error) {
+        setError('Failed to delete issue');
+        console.error('Delete error:', error);
+      }
     }
   };
 
@@ -273,7 +286,8 @@ const IssueDetails = () => {
                 AI Analysis in Progress
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Our AI is analyzing your issue and generating a repair plan...
+                Our AI (Phi-4) is analyzing your issue and generating a detailed repair plan...
+                This may take 30-60 seconds for complex repairs.
               </Typography>
             </CardContent>
           </Card>
@@ -338,6 +352,15 @@ const IssueDetails = () => {
             Mark as Completed
           </Button>
         )}
+        
+        <Button
+          variant="outlined"
+          color="error"
+          startIcon={<Delete />}
+          onClick={handleDeleteIssue}
+        >
+          Delete Issue
+        </Button>
       </Box>
     </Container>
   );

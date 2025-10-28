@@ -23,6 +23,7 @@ import {
   Assessment,
   Home,
   Build,
+  Delete,
 } from '@mui/icons-material';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 
@@ -62,6 +63,18 @@ const Dashboard = () => {
   const handleUploadSuccess = () => {
     setShowUpload(false);
     loadData(); // Refresh data
+  };
+
+  const handleDeleteIssue = async (issueId) => {
+    if (window.confirm('Are you sure you want to delete this issue? This action cannot be undone.')) {
+      try {
+        await issuesAPI.deleteIssue(issueId);
+        loadData(); // Refresh the issues list
+      } catch (error) {
+        setError('Failed to delete issue');
+        console.error('Delete error:', error);
+      }
+    }
   };
 
   const getStatusColor = (status) => {
@@ -283,13 +296,23 @@ const Dashboard = () => {
                     }
                   />
                   <ListItemSecondaryAction>
-                    <Button
-                      size="small"
-                      startIcon={<Visibility />}
-                      onClick={() => navigate(`/issue/${issue.id}`)}
-                    >
-                      View
-                    </Button>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        size="small"
+                        startIcon={<Visibility />}
+                        onClick={() => navigate(`/issue/${issue.id}`)}
+                      >
+                        View
+                      </Button>
+                      <Button
+                        size="small"
+                        color="error"
+                        startIcon={<Delete />}
+                        onClick={() => handleDeleteIssue(issue.id)}
+                      >
+                        Delete
+                      </Button>
+                    </Box>
                   </ListItemSecondaryAction>
                 </ListItem>
               ))}

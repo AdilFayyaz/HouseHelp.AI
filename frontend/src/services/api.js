@@ -4,7 +4,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 90000, // 90 seconds for AI processing
 });
 
 // Add request/response interceptors for better error handling
@@ -75,6 +75,12 @@ export const issuesAPI = {
   // Update issue
   updateIssue: async (issueId, updates) => {
     const response = await api.put(`/api/issues/${issueId}`, updates);
+    return response.data;
+  },
+
+  // Delete issue
+  deleteIssue: async (issueId) => {
+    const response = await api.delete(`/api/issues/${issueId}`);
     return response.data;
   },
 

@@ -104,5 +104,30 @@ def initialize_sample_data():
             for provider in providers:
                 db.add(provider)
             db.commit()
+        
+        # Add sample audit logs if none exist
+        existing_audits = db.query(AuditLog).count()
+        if existing_audits == 0:
+            # Get some existing issues to create audit logs for
+            issues = db.query(Issue).limit(3).all()
+            sample_audits = []
+            
+            for i, issue in enumerate(issues):
+                # Create audit logs for first few issues
+                audit = AuditLog(
+                    issue_id=issue.id,
+                    cost=35.50 + (i * 15.25),  # Varying costs
+                    time_spent=2.5 + (i * 0.5),  # Varying time
+                    status="completed",
+                    notes=f"Successfully repaired {issue.description[:50]}...",
+                    completed_by="DIY" if issue.is_diy else "Professional"
+                )
+                sample_audits.append(audit)
+            
+            for audit in sample_audits:
+                db.add(audit)
+            db.commit()
+            print(f"Added {len(sample_audits)} sample audit logs")
+            
     finally:
         db.close()
