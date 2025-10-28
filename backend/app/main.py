@@ -233,6 +233,8 @@ async def create_audit_log(audit_log: AuditLogCreate, db: Session = Depends(get_
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(message: ChatMessage, db: Session = Depends(get_db)):
     """Chat with AI about repair issues"""
+    import asyncio
+    
     context = ""
     
     # Get context from issue if provided
@@ -242,10 +244,24 @@ async def chat(message: ChatMessage, db: Session = Depends(get_db)):
             repair_plan = json.loads(issue.repair_plan) if issue.repair_plan else {}
             context = f"Issue: {issue.description}\nDiagnosis: {issue.diagnosis}\nRepair Plan: {json.dumps(repair_plan, indent=2)}"
     
-    # Generate response
-    response = phi4_service.chat_response(message.message, context)
-    
-    return ChatResponse(response=response, context=context if context else None)
+    try:
+        # Add timeout wrapper to prevent hanging
+        response = await asyncio.wait_for(
+            asyncio.to_thread(phi4_service.chat_response, message.message, context),
+            timeout=15.0  # 15 second timeout
+        )
+        return ChatResponse(response=response, context=context if context else None)
+    except asyncio.TimeoutError:
+        return ChatResponse(
+            response="I'm taking longer than usual to respond. Please try asking a simpler question or try again.",
+            context=context if context else None
+        )
+    except Exception as e:
+        print(f"Chat endpoint error: {e}")
+        return ChatResponse(
+            response="Sorry, I encountered an error. Please try again.",
+            context=context if context else None
+        )
 
 # Dashboard endpoint
 @app.get("/api/dashboard")

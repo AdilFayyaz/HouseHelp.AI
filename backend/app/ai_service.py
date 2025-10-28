@@ -80,7 +80,7 @@ class Phi4Service:
             return None
     
     def generate_repair_plan(self, image_path: str, description: str) -> dict:
-        """Generate repair plan using Phi-4 Mini via Ollama"""
+        """Generate repair plan using fallback system"""
         print(f"Generating repair plan for: {description}")
         
         # For now, use fallback to ensure stability
@@ -177,20 +177,33 @@ class Phi4Service:
             }
     
     def chat_response(self, message: str, context: str = "") -> str:
-        """Generate chat response for follow-up questions"""
+        """Generate chat response with fallback handling"""
+        
+        # First try quick fallback responses for common questions
+        message_lower = message.lower()
+        if "skip" in message_lower and "step" in message_lower:
+            return "For safety reasons, I recommend following all repair steps in order. However, if you're experienced, you might be able to combine some steps. Always prioritize safety and don't skip critical safety checks."
+        elif "tools" in message_lower:
+            return "Make sure you have all the required tools before starting. If you're missing tools, you can often substitute with similar items or borrow/buy them. Check the tool list in your repair plan."
+        elif "safe" in message_lower:
+            return "Safety is paramount in any repair. Always turn off power/water, wear protective equipment, and don't attempt repairs beyond your skill level. If in doubt, consult a professional."
+        elif "cost" in message_lower:
+            return "Repair costs vary by location and complexity. DIY repairs typically save 50-70% compared to professional services, but factor in tool costs and your time."
+        elif "wrong" in message_lower:
+            return "If something goes wrong during the repair, stop immediately, ensure safety (turn off power/water), and assess the situation. Don't force anything. Consider consulting a professional if the issue is beyond your expertise."
+        
+        # Try Ollama only for complex questions, with timeout
         if not self.check_model_availability():
-            return "I'm currently unable to access the AI model. Please ensure Ollama is running and phi4-mini is installed."
+            return "I'm currently unable to access the AI model, but I can still help! Please ask specific questions about tools, safety, costs, or common repair steps."
         
         try:
             prompt = f"""
-            You are a helpful home repair assistant. Answer the user's question based on the context provided.
+            You are a helpful home repair assistant. Answer briefly and clearly.
             
             Context: {context}
-            
             User question: {message}
             
-            Provide a helpful, clear answer about the repair process. Be specific and prioritize safety.
-            Keep your response concise but informative.
+            Provide a helpful, concise answer (2-3 sentences max). Prioritize safety.
             """
             
             response = self.client.generate(
@@ -199,7 +212,8 @@ class Phi4Service:
                 stream=False,
                 options={
                     "temperature": 0.7,
-                    "num_predict": 300,
+                    "num_predict": 100,  # Very short response
+                    "timeout": 8,  # Short timeout
                 }
             )
             
@@ -207,7 +221,11 @@ class Phi4Service:
             
         except Exception as e:
             print(f"Error generating chat response: {e}")
-            return "I'm having trouble processing your question right now. Please try rephrasing it or check if Ollama is running properly."
+            # Return a helpful fallback based on context
+            if context and "repair" in context.lower():
+                return "Based on your repair plan, I recommend following the steps carefully and prioritizing safety. Feel free to ask specific questions about tools, materials, or safety concerns."
+            else:
+                return "I'm here to help with your repair questions! Ask me about specific steps, tools needed, safety concerns, or costs."
 
 # Global instance
 phi4_service = Phi4Service()
