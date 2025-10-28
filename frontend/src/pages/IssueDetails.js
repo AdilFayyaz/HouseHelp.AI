@@ -60,14 +60,19 @@ const IssueDetails = () => {
     }
   };
 
-  const analyzeIssue = async () => {
+  const analyzeIssue = async (forceReanalyze = false) => {
     setIsAnalyzing(true);
     setError('');
 
     try {
-      const result = await issuesAPI.analyzeIssue(id);
+      const result = await issuesAPI.analyzeIssue(id, forceReanalyze);
       console.log('Analysis result:', result);
       setAnalysis(result);
+      
+      // Show indicator if loaded from cache
+      if (result.from_cache && !forceReanalyze) {
+        console.log('Analysis loaded from cache');
+      }
       
       // Update just the issue status without overwriting analysis data
       setIssue(prevIssue => ({
@@ -295,6 +300,31 @@ const IssueDetails = () => {
 
         {analysis && (
           <>
+            {/* Analysis Header with Re-analyze Option */}
+            <Card sx={{ mb: 2 }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Box>
+                    <Typography variant="h5" gutterBottom>
+                      AI Analysis Results
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {analysis.from_cache ? '✅ Loaded from previous analysis' : '🆕 Freshly generated analysis'}
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    onClick={() => analyzeIssue(true)}
+                    disabled={isAnalyzing}
+                    startIcon={isAnalyzing ? <CircularProgress size={16} /> : <Refresh />}
+                    size="small"
+                  >
+                    {isAnalyzing ? 'Re-analyzing...' : 'Re-analyze'}
+                  </Button>
+                </Box>
+              </CardContent>
+            </Card>
+            
             {/* Safely render FlowchartDisplay with error boundary */}
             {analysis.repair_plan && (
               <Box sx={{ mt: 3 }}>
@@ -303,6 +333,21 @@ const IssueDetails = () => {
                   mermaidChart={analysis.mermaid_flowchart}
                   textChart={analysis.text_flowchart}
                 />
+              </Box>
+            )}
+            
+            {/* Professional Help Section */}
+            {analysis.repair_plan && analysis.repair_plan.is_diy && (
+              <Box sx={{ mt: 4, mb: 2 }}>
+                <Alert severity="info" sx={{ maxWidth: 1000, mx: 'auto' }}>
+                  <Typography variant="h6" sx={{ mb: 1 }}>
+                    Feeling overwhelmed? We've got you covered! 👨‍🔧
+                  </Typography>
+                  <Typography variant="body2">
+                    While this is designed as a DIY repair, you can always choose to get professional help. 
+                    Scroll down to see qualified maintenance providers in your area.
+                  </Typography>
+                </Alert>
               </Box>
             )}
             

@@ -60,10 +60,11 @@ export const issuesAPI = {
   },
 
   // Analyze issue with AI
-  analyzeIssue: async (issueId) => {
+  analyzeIssue: async (issueId, forceReanalyze = false) => {
     try {
-      console.log(`Analyzing issue ${issueId}...`);
-      const response = await api.post(`/api/issues/${issueId}/analyze`);
+      console.log(`Analyzing issue ${issueId}${forceReanalyze ? ' (forced)' : ''}...`);
+      const params = forceReanalyze ? '?force_reanalyze=true' : '';
+      const response = await api.post(`/api/issues/${issueId}/analyze${params}`);
       console.log('Analysis response:', response.data);
       return response.data;
     } catch (error) {
@@ -86,9 +87,7 @@ export const issuesAPI = {
 
   // Call maintenance for issue
   callMaintenance: async (issueId, providerId) => {
-    const response = await api.post(`/api/issues/${issueId}/call-maintenance`, {
-      provider_id: providerId,
-    });
+    const response = await api.post(`/api/issues/${issueId}/call-maintenance?provider_id=${providerId}`);
     return response.data;
   },
 };

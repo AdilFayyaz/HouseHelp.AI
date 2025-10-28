@@ -114,9 +114,22 @@ You must respond with ONLY valid JSON in exactly this format:
     "is_diy": true,
     "estimated_time": "Total time",
     "estimated_cost": "$X-Y",
-    "safety_warnings": ["Warning 1", "Warning 2"],
-    "recommended_provider": "professional type if not DIY"
+    "safety_warnings": ["Only include safety warnings that are RELEVANT to this specific repair type - e.g., electrical safety for electrical work, water safety for plumbing, structural safety for wall work. Do NOT include generic electrical warnings for non-electrical repairs"],
+    "recommended_provider": "Use ONLY one of these values: 'general', 'plumbing', 'electrical', 'appliances', or null for DIY repairs"
 }}
+
+CRITICAL: Safety warnings must be contextually appropriate. For example:
+- Curtain/window repairs: Use sturdy ladder, check wall anchors, wear safety glasses
+- Electrical repairs: Turn off power at breaker, use non-contact voltage tester, wear insulated gloves
+- Plumbing repairs: Turn off water supply, have towels ready, check for leaks
+- General repairs: Wear appropriate protective equipment, ensure stable work surface
+
+CRITICAL: For recommended_provider, use ONLY these exact values:
+- "general" for basic home repairs, furniture, walls, windows, doors
+- "plumbing" for water-related issues, pipes, leaks, toilets
+- "electrical" for wiring, outlets, switches, electrical fixtures
+- "appliances" for kitchen/laundry appliances, HVAC
+- null for simple DIY repairs
 
 Important: Respond with ONLY the JSON object, no other text or formatting.
 """
@@ -128,9 +141,9 @@ Important: Respond with ONLY the JSON object, no other text or formatting.
                 stream=False,
                 options={
                     "temperature": 0.3,  # Lower temperature for more focused responses
-                    "num_predict": 800,  # More tokens for detailed repair plans
-                    "top_p": 0.9,
-                    "stop": ["\n\n", "```"]
+                    "num_predict": 1000,  # More tokens for detailed repair plans
+                    "top_p": 0.9
+                    # Removed stop tokens that were cutting off markdown code blocks
                 }
             )
             

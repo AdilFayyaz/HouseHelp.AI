@@ -38,10 +38,38 @@ const MaintenanceProviders = ({ issueId, repairPlan, onProviderCalled }) => {
       // Determine specialty based on repair plan
       let specialty = null;
       if (repairPlan?.recommended_provider) {
-        specialty = repairPlan.recommended_provider;
+        const provider = repairPlan.recommended_provider.toLowerCase();
+        // Map common specialty names
+        if (provider.includes('plumb')) specialty = 'plumbing';
+        else if (provider.includes('electric')) specialty = 'electrical';
+        else if (provider.includes('appliance')) specialty = 'appliances';
+        else if (provider === 'general' || provider.includes('general')) specialty = 'general';
+        // For unrecognized specialties, default to general
+        else specialty = 'general';
+      } else {
+        // If no specific recommendation, infer from repair description/type
+        const description = repairPlan?.diagnosis?.toLowerCase() || '';
+        if (description.includes('plumb') || description.includes('water') || description.includes('pipe') || description.includes('leak')) {
+          specialty = 'plumbing';
+        } else if (description.includes('electric') || description.includes('wiring') || description.includes('outlet') || description.includes('switch')) {
+          specialty = 'electrical';
+        } else if (description.includes('appliance') || description.includes('washer') || description.includes('dryer') || description.includes('refrigerator')) {
+          specialty = 'appliances';
+        } else {
+          specialty = 'general'; // Default for things like curtain rods, furniture, walls, etc.
+        }
       }
 
-      const providersData = await providersAPI.getProviders(specialty);
+      console.log('Loading providers with specialty:', specialty);
+      let providersData = await providersAPI.getProviders(specialty);
+      
+      // If no providers found with specific specialty, try general as fallback
+      if (providersData.length === 0 && specialty !== 'general') {
+        console.log('No providers found for specialty, trying general...');
+        providersData = await providersAPI.getProviders('general');
+      }
+      
+      console.log('Found providers:', providersData.length);
       setProviders(providersData);
     } catch (error) {
       console.error('Error loading providers:', error);
@@ -57,16 +85,27 @@ const MaintenanceProviders = ({ issueId, repairPlan, onProviderCalled }) => {
     setSuccess('');
 
     try {
+      console.log('Calling maintenance for issue:', issueId, 'provider:', selectedProvider.id);
       const result = await issuesAPI.callMaintenance(issueId, selectedProvider.id);
-      setSuccess(`Maintenance request sent to ${selectedProvider.name}`);
+      console.log('Maintenance call successful:', result);
+      
+      setSuccess(`✅ Success! Maintenance request sent to ${selectedProvider.name}. They will contact you soon.`);
       setIsDialogOpen(false);
       
-      if (onProviderCalled) {
-        onProviderCalled(result);
-      }
+      // Wait a moment to show success message, then reload
+      setTimeout(() => {
+        if (onProviderCalled) {
+          onProviderCalled(result);
+        }
+      }, 1500);
+      
     } catch (error) {
-      setError('Failed to send maintenance request');
       console.error('Error calling maintenance:', error);
+      console.error('Error details:', error.response?.data);
+      
+      // Show more detailed error message
+      const errorMessage = error.response?.data?.detail || error.message || 'Unknown error occurred';
+      setError(`Failed to send maintenance request: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -77,7 +116,7 @@ const MaintenanceProviders = ({ issueId, repairPlan, onProviderCalled }) => {
     setIsDialogOpen(true);
   };
 
-  if (!repairPlan || repairPlan.is_diy) {
+  if (!repairPlan) {
     return null;
   }
 
@@ -102,6 +141,24 @@ const MaintenanceProviders = ({ issueId, repairPlan, onProviderCalled }) => {
           {success && (
             <Alert severity="success" sx={{ mb: 2 }}>
               {success}
+            </Alert>
+          )}
+
+          {/* Debug info - will be removed later */}
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontStyle: 'italic' }}>
+            Debug: Found {providers.length} providers | Recommended: {repairPlan?.recommended_provider || 'none'}
+          </Typography>
+
+          {/* Temporary simple list for debugging */}
+          {providers.length > 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Showing {providers.length} relevant {providers.length === 1 ? 'provider' : 'providers'} for this type of repair
+            </Typography>
+          )}
+
+          {providers.length === 0 && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              No specialized providers available for this repair type. Please contact general support.
             </Alert>
           )}
 

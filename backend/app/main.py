@@ -110,13 +110,35 @@ async def get_issue(issue_id: int, db: Session = Depends(get_db)):
     return issue
 
 @app.post("/api/issues/{issue_id}/analyze", response_model=dict)
-async def analyze_issue(issue_id: int, db: Session = Depends(get_db)):
+async def analyze_issue(issue_id: int, force_reanalyze: bool = False, db: Session = Depends(get_db)):
     """Analyze issue and generate repair plan"""
     try:
         issue = db.query(Issue).filter(Issue.id == issue_id).first()
         if not issue:
             raise HTTPException(status_code=404, detail="Issue not found")
         
+        # Check if analysis already exists and we're not forcing reanalysis
+        if issue.repair_plan and issue.diagnosis and not force_reanalyze:
+            print(f"Using existing analysis for issue {issue_id}")
+            try:
+                # Return existing analysis
+                repair_plan = json.loads(issue.repair_plan)
+                
+                # Generate flowcharts from existing data
+                mermaid_chart = generate_mermaid_flowchart(repair_plan)
+                text_chart = create_simple_flowchart(repair_plan.get("steps", []), repair_plan.get("is_diy", True))
+                
+                return {
+                    "repair_plan": repair_plan,
+                    "mermaid_flowchart": mermaid_chart,
+                    "text_flowchart": text_chart,
+                    "from_cache": True
+                }
+            except json.JSONDecodeError:
+                print(f"Invalid JSON in repair_plan for issue {issue_id}, regenerating...")
+                # Fall through to regenerate analysis
+        
+        print(f"Generating new analysis for issue {issue_id}")
         # Generate repair plan using AI
         repair_plan = phi4_service.generate_repair_plan(issue.image_path, issue.description)
         
@@ -135,7 +157,8 @@ async def analyze_issue(issue_id: int, db: Session = Depends(get_db)):
         return {
             "repair_plan": repair_plan,
             "mermaid_flowchart": mermaid_chart,
-            "text_flowchart": text_chart
+            "text_flowchart": text_chart,
+            "from_cache": False
         }
     except HTTPException:
         raise
@@ -202,6 +225,18 @@ async def call_maintenance(issue_id: int, provider_id: int, db: Session = Depend
     
     # Update issue status
     issue.status = "maintenance_called"
+    db.commit()
+    
+    # Create audit log entry for maintenance request
+    audit_log = AuditLog(
+        issue_id=issue.id,
+        cost=0.0,  # No cost yet, will be updated when work is completed
+        time_spent=0.0,  # No time spent yet
+        status="maintenance_requested",
+        notes=f"Maintenance request sent to {provider.name} ({provider.specialty})",
+        completed_by=provider.name
+    )
+    db.add(audit_log)
     db.commit()
     
     # Generate summary for provider
@@ -285,8 +320,33 @@ async def get_dashboard(db: Session = Depends(get_db)):
     """Get dashboard statistics"""
     total_issues = db.query(Issue).count()
     completed_issues = db.query(Issue).filter(Issue.status == "completed").count()
-    diy_issues = db.query(Issue).filter(Issue.is_diy == True).count()
-    professional_issues = db.query(Issue).filter(Issue.is_diy == False).count()
+    
+    # Track actual completion method based on what users actually did
+    # Check audit logs for maintenance requests vs DIY completions
+    maintenance_requests = db.query(AuditLog).filter(
+        AuditLog.status.in_(["maintenance_requested", "completed"]),
+        AuditLog.completed_by != "DIY"
+    ).distinct(AuditLog.issue_id).count()
+    
+    # DIY issues are those without maintenance requests OR explicitly marked as DIY in audit logs
+    diy_completed = db.query(AuditLog).filter(
+        AuditLog.status == "completed",
+        AuditLog.completed_by == "DIY"
+    ).distinct(AuditLog.issue_id).count()
+    
+    # For issues without audit logs, fall back to the original is_diy flag
+    issues_with_audit_logs = db.query(AuditLog.issue_id).distinct().subquery()
+    issues_without_audit = db.query(Issue).filter(
+        ~Issue.id.in_(issues_with_audit_logs)
+    ).all()
+    
+    # Add fallback counts for issues without audit logs
+    fallback_diy = sum(1 for issue in issues_without_audit if issue.is_diy)
+    fallback_professional = sum(1 for issue in issues_without_audit if not issue.is_diy)
+    
+    # Final counts: actual usage from audit logs + fallback from original flags
+    actual_diy_issues = diy_completed + fallback_diy
+    actual_professional_issues = maintenance_requests + fallback_professional
     
     # Calculate costs from audit logs
     try:
@@ -313,8 +373,8 @@ async def get_dashboard(db: Session = Depends(get_db)):
     return {
         "total_issues": total_issues,
         "completed_issues": completed_issues,
-        "diy_issues": diy_issues,
-        "professional_issues": professional_issues,
+        "diy_issues": actual_diy_issues,
+        "professional_issues": actual_professional_issues,
         "total_cost": total_cost,
         "completion_rate": (completed_issues / total_issues * 100) if total_issues > 0 else 0
     }
