@@ -7,6 +7,34 @@ const api = axios.create({
   timeout: 30000,
 });
 
+// Add request/response interceptors for better error handling
+api.interceptors.request.use(
+  (config) => {
+    console.log(`Making ${config.method.toUpperCase()} request to:`, config.url);
+    return config;
+  },
+  (error) => {
+    console.error('Request error:', error);
+    return Promise.reject(error);
+  }
+);
+
+api.interceptors.response.use(
+  (response) => {
+    console.log(`Response from ${response.config.url}:`, response.status);
+    return response;
+  },
+  (error) => {
+    console.error('Response error:', {
+      url: error.config?.url,
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
+    return Promise.reject(error);
+  }
+);
+
 // Issues API
 export const issuesAPI = {
   // Create new issue with image upload
@@ -33,8 +61,15 @@ export const issuesAPI = {
 
   // Analyze issue with AI
   analyzeIssue: async (issueId) => {
-    const response = await api.post(`/api/issues/${issueId}/analyze`);
-    return response.data;
+    try {
+      console.log(`Analyzing issue ${issueId}...`);
+      const response = await api.post(`/api/issues/${issueId}/analyze`);
+      console.log('Analysis response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Analysis failed:', error);
+      throw error;
+    }
   },
 
   // Update issue

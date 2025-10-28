@@ -112,30 +112,36 @@ async def get_issue(issue_id: int, db: Session = Depends(get_db)):
 @app.post("/api/issues/{issue_id}/analyze", response_model=dict)
 async def analyze_issue(issue_id: int, db: Session = Depends(get_db)):
     """Analyze issue and generate repair plan"""
-    issue = db.query(Issue).filter(Issue.id == issue_id).first()
-    if not issue:
-        raise HTTPException(status_code=404, detail="Issue not found")
-    
-    # Generate repair plan using AI
-    repair_plan = phi4_service.generate_repair_plan(issue.image_path, issue.description)
-    
-    # Update issue with analysis
-    issue.diagnosis = repair_plan.get("diagnosis", "")
-    issue.repair_plan = json.dumps(repair_plan)
-    issue.is_diy = repair_plan.get("is_diy", True)
-    issue.status = "analyzed"
-    
-    db.commit()
-    
-    # Generate flowchart
-    mermaid_chart = generate_mermaid_flowchart(repair_plan)
-    text_chart = create_simple_flowchart(repair_plan.get("steps", []), repair_plan.get("is_diy", True))
-    
-    return {
-        "repair_plan": repair_plan,
-        "mermaid_flowchart": mermaid_chart,
-        "text_flowchart": text_chart
-    }
+    try:
+        issue = db.query(Issue).filter(Issue.id == issue_id).first()
+        if not issue:
+            raise HTTPException(status_code=404, detail="Issue not found")
+        
+        # Generate repair plan using AI
+        repair_plan = phi4_service.generate_repair_plan(issue.image_path, issue.description)
+        
+        # Update issue with analysis
+        issue.diagnosis = repair_plan.get("diagnosis", "")
+        issue.repair_plan = json.dumps(repair_plan)
+        issue.is_diy = repair_plan.get("is_diy", True)
+        issue.status = "analyzed"
+        
+        db.commit()
+        
+        # Generate flowchart
+        mermaid_chart = generate_mermaid_flowchart(repair_plan)
+        text_chart = create_simple_flowchart(repair_plan.get("steps", []), repair_plan.get("is_diy", True))
+        
+        return {
+            "repair_plan": repair_plan,
+            "mermaid_flowchart": mermaid_chart,
+            "text_flowchart": text_chart
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error analyzing issue {issue_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 @app.put("/api/issues/{issue_id}", response_model=IssueResponse)
 async def update_issue(issue_id: int, issue_update: IssueUpdate, db: Session = Depends(get_db)):

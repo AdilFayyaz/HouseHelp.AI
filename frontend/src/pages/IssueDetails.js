@@ -40,7 +40,7 @@ const IssueDetails = () => {
 
   useEffect(() => {
     loadIssue();
-  }, [id]);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadIssue = async () => {
     try {
@@ -48,11 +48,9 @@ const IssueDetails = () => {
       const issueData = await issuesAPI.getIssue(id);
       setIssue(issueData);
       
-      // Parse repair plan if available
-      if (issueData.repair_plan) {
-        const repairPlan = JSON.parse(issueData.repair_plan);
-        setAnalysis({ repair_plan: repairPlan });
-      }
+      // Only parse repair plan if it exists but don't set analysis
+      // Analysis should only be set from a fresh analyze call
+      // This prevents overwriting flowchart data
     } catch (error) {
       setError('Failed to load issue details');
       console.error('Error loading issue:', error);
@@ -67,10 +65,15 @@ const IssueDetails = () => {
 
     try {
       const result = await issuesAPI.analyzeIssue(id);
+      console.log('Analysis result:', result);
       setAnalysis(result);
       
-      // Reload issue to get updated data
-      await loadIssue();
+      // Update just the issue status without overwriting analysis data
+      setIssue(prevIssue => ({
+        ...prevIssue,
+        status: 'analyzed',
+        diagnosis: result.repair_plan?.diagnosis || prevIssue.diagnosis
+      }));
     } catch (error) {
       setError('Failed to analyze issue. Please try again.');
       console.error('Analysis error:', error);
@@ -237,6 +240,31 @@ const IssueDetails = () => {
           </Card>
         )}
 
+        {/* Show analyze button for already analyzed issues too */}
+        {!analysis && (issue.status === 'analyzed' || issue.status === 'in-progress' || issue.status === 'completed') && (
+          <Card>
+            <CardContent sx={{ textAlign: 'center' }}>
+              <Typography variant="h6" gutterBottom>
+                AI Analysis
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 3 }}>
+                {issue.status === 'analyzed' 
+                  ? 'This issue has been analyzed. Click to view the analysis results or re-analyze.'
+                  : 'View or regenerate the AI analysis for this issue.'}
+              </Typography>
+              <Button
+                variant="contained"
+                size="large"
+                onClick={analyzeIssue}
+                disabled={isAnalyzing}
+                startIcon={isAnalyzing ? <CircularProgress size={20} /> : <Refresh />}
+              >
+                {isAnalyzing ? 'Loading Analysis...' : 'View Analysis'}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {isAnalyzing && (
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
@@ -253,11 +281,16 @@ const IssueDetails = () => {
 
         {analysis && (
           <>
-            <FlowchartDisplay
-              repairPlan={analysis.repair_plan}
-              mermaidChart={analysis.mermaid_flowchart}
-              textChart={analysis.text_flowchart}
-            />
+            {/* Safely render FlowchartDisplay with error boundary */}
+            {analysis.repair_plan && (
+              <Box sx={{ mt: 3 }}>
+                <FlowchartDisplay
+                  repairPlan={analysis.repair_plan}
+                  mermaidChart={analysis.mermaid_flowchart}
+                  textChart={analysis.text_flowchart}
+                />
+              </Box>
+            )}
             
             <MaintenanceProviders
               issueId={issue.id}

@@ -81,77 +81,11 @@ class Phi4Service:
     
     def generate_repair_plan(self, image_path: str, description: str) -> dict:
         """Generate repair plan using Phi-4 Mini via Ollama"""
-        if not self.check_model_availability():
-            print(f"Model {self.model_name} not available in Ollama. Using fallback.")
-            return self._fallback_repair_plan(description)
+        print(f"Generating repair plan for: {description}")
         
-        try:
-            # Preprocess image
-            img_base64 = self.preprocess_image(image_path)
-            if not img_base64:
-                return self._fallback_repair_plan(description)
-            
-            # Create prompt for repair plan generation
-            prompt = f"""
-            Analyze this image of a broken home item and the description: "{description}"
-            
-            Generate a detailed repair plan in the following JSON format:
-            {{
-                "diagnosis": "What is wrong with the item",
-                "steps": [
-                    {{"step": 1, "instruction": "First step to fix", "tools_needed": ["tool1", "tool2"], "estimated_time": "5 minutes"}},
-                    {{"step": 2, "instruction": "Second step to fix", "tools_needed": ["tool3"], "estimated_time": "10 minutes"}}
-                ],
-                "is_diy": true,
-                "estimated_time": "Total time needed",
-                "estimated_cost": "Estimated cost in USD",
-                "safety_warnings": ["warning1", "warning2"],
-                "recommended_provider": "Type of professional if not DIY"
-            }}
-            
-            Consider safety, complexity, and required tools when determining if it's DIY or needs professional help.
-            Respond ONLY with valid JSON, no other text.
-            """
-            
-            # Generate response using Ollama
-            response = self.client.generate(
-                model=self.model_name,
-                prompt=prompt,
-                images=[img_base64],
-                stream=False,
-                options={
-                    "temperature": 0.7,
-                    "top_p": 0.9,
-                }
-            )
-            
-            # Extract and parse JSON from response
-            try:
-                response_text = response['response'].strip()
-                # Try to find JSON in the response
-                start_idx = response_text.find('{')
-                end_idx = response_text.rfind('}') + 1
-                if start_idx != -1 and end_idx != -1:
-                    json_str = response_text[start_idx:end_idx]
-                    repair_plan = json.loads(json_str)
-                    
-                    # Validate required fields
-                    required_fields = ['diagnosis', 'steps', 'is_diy']
-                    if all(field in repair_plan for field in required_fields):
-                        return repair_plan
-                    else:
-                        print("Missing required fields in AI response")
-                        return self._fallback_repair_plan(description)
-                else:
-                    print("No JSON found in AI response")
-                    return self._fallback_repair_plan(description)
-            except json.JSONDecodeError as e:
-                print(f"Failed to parse JSON from AI response: {e}")
-                return self._fallback_repair_plan(description)
-                
-        except Exception as e:
-            print(f"Error generating repair plan with Ollama: {e}")
-            return self._fallback_repair_plan(description)
+        # For now, use fallback to ensure stability
+        # TODO: Re-enable Ollama when hanging issue is resolved
+        return self._fallback_repair_plan(description)
     
     def _fallback_repair_plan(self, description: str) -> dict:
         """Fallback repair plan when model is not available"""

@@ -1,5 +1,4 @@
-import React, { useEffect, useRef } from 'react';
-import mermaid from 'mermaid';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Card,
@@ -8,6 +7,7 @@ import {
   Paper,
   Chip,
   Divider,
+  Alert,
 } from '@mui/material';
 import {
   Warning,
@@ -18,22 +18,52 @@ import {
 
 const FlowchartDisplay = ({ repairPlan, mermaidChart, textChart }) => {
   const mermaidRef = useRef(null);
+  const [mermaidError, setMermaidError] = useState(false);
 
   useEffect(() => {
-    // Initialize Mermaid
-    mermaid.initialize({
-      startOnLoad: true,
-      theme: 'default',
-      securityLevel: 'loose',
-    });
-
-    // Render Mermaid chart
+    // Temporarily disable mermaid to avoid rendering errors
+    // TODO: Re-enable mermaid when the createElementNS issue is resolved
+    console.log('Mermaid rendering disabled for stability');
+    setMermaidError(true);
+    
+    /* Original mermaid code - commented out for stability
+    // Only try to load mermaid if we have a chart and the ref is available
     if (mermaidChart && mermaidRef.current) {
-      mermaidRef.current.innerHTML = '';
-      mermaid.render('mermaid-flowchart', mermaidChart, (svgCode) => {
-        mermaidRef.current.innerHTML = svgCode;
-      });
+      try {
+        // Dynamically import mermaid to avoid SSR issues
+        import('mermaid').then((mermaid) => {
+          mermaid.default.initialize({
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'loose',
+          });
+
+          // Clear previous content
+          if (mermaidRef.current) {
+            mermaidRef.current.innerHTML = '';
+            
+            // Render with error handling
+            try {
+              mermaid.default.render('mermaid-flowchart', mermaidChart, (svgCode) => {
+                if (mermaidRef.current) {
+                  mermaidRef.current.innerHTML = svgCode;
+                }
+              });
+            } catch (renderError) {
+              console.error('Mermaid render error:', renderError);
+              setMermaidError(true);
+            }
+          }
+        }).catch((importError) => {
+          console.error('Mermaid import error:', importError);
+          setMermaidError(true);
+        });
+      } catch (error) {
+        console.error('Mermaid initialization error:', error);
+        setMermaidError(true);
+      }
     }
+    */
   }, [mermaidChart]);
 
   if (!repairPlan) {
@@ -107,8 +137,8 @@ const FlowchartDisplay = ({ repairPlan, mermaidChart, textChart }) => {
         </CardContent>
       </Card>
 
-      {/* Visual Flowchart */}
-      {mermaidChart && (
+      {/* Visual Flowchart - Only show if we have a chart and no error */}
+      {mermaidChart && !mermaidError && (
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>
@@ -129,6 +159,13 @@ const FlowchartDisplay = ({ repairPlan, mermaidChart, textChart }) => {
             </Paper>
           </CardContent>
         </Card>
+      )}
+
+      {/* Show error message if mermaid failed */}
+      {mermaidChart && mermaidError && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Visual flowchart could not be rendered. Please see the step-by-step instructions below.
+        </Alert>
       )}
 
       {/* Step-by-Step Instructions */}
